@@ -17,3 +17,8 @@ CREATE TABLE log_cambios_resultados (
     tipo_examen VARCHAR(100),
     fecha TIMESTAMP
 );
+
+CREATE TRIGGER trg_log_insert_resultados
+AFTER INSERT ON resultados_examenes
+FOR EACH ROW
+CALL "com.example.apache_camel.LogCambiosResultadosTrigger";

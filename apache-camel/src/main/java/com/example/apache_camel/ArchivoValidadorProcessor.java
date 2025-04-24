@@ -35,6 +35,7 @@ public void process(Exchange exchange) throws Exception {
     }
 
     exchange.getIn().setHeader("archivo_valido", true);
+    System.out.println("✔️ VALIDACIÓN COMPLETA: " + filePath);
 }
 
 }

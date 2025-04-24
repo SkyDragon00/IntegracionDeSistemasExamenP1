@@ -6,16 +6,14 @@ import org.springframework.stereotype.Component;
 
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
+import java.sql.*;
 import java.time.LocalDate;
 import java.util.List;
 
 @Component
 public class GuardarEnBDProcessor implements Processor {
 
-    private final String URL = "jdbc:h2:mem:bionet"; // O usa tu URL MySQL
+    private final String URL = "jdbc:h2:mem:bionet";
     private final String USER = "sa";
     private final String PASSWORD = "";
 
@@ -23,6 +21,10 @@ public class GuardarEnBDProcessor implements Processor {
     public void process(Exchange exchange) throws Exception {
         String filePath = exchange.getIn().getHeader("CamelFilePath", String.class);
         List<String> lines = Files.readAllLines(Paths.get(filePath));
+        String fileName = exchange.getIn().getHeader("CamelFileName", String.class);
+
+        int insertados = 0;
+        int duplicados = 0;
 
         try (Connection conn = DriverManager.getConnection(URL, USER, PASSWORD)) {
             for (int i = 1; i < lines.size(); i++) {
@@ -35,17 +37,35 @@ public class GuardarEnBDProcessor implements Processor {
                 String resultado = parts[3];
                 LocalDate fechaExamen = LocalDate.parse(parts[4]);
 
-                String sql = "INSERT INTO resultados_examenes (laboratorio_id, paciente_id, tipo_examen, resultado, fecha_examen) " +
-                             "VALUES (?, ?, ?, ?, ?)";
+                // Verificar duplicado
+                String checkSql = "SELECT COUNT(*) FROM resultados_examenes WHERE paciente_id = ? AND tipo_examen = ? AND fecha_examen = ?";
+                PreparedStatement checkStmt = conn.prepareStatement(checkSql);
+                checkStmt.setString(1, pacienteId);
+                checkStmt.setString(2, tipoExamen);
+                checkStmt.setDate(3, Date.valueOf(fechaExamen));
+                ResultSet rs = checkStmt.executeQuery();
+                rs.next();
 
-                PreparedStatement stmt = conn.prepareStatement(sql);
+                if (rs.getInt(1) > 0) {
+                    System.out.println("⚠️ DUPLICADO - Ya existe resultado para paciente " + pacienteId + " examen " + tipoExamen + " en " + fechaExamen);
+                    duplicados++;
+                    continue;
+                }
+
+                String insertSql = "INSERT INTO resultados_examenes (laboratorio_id, paciente_id, tipo_examen, resultado, fecha_examen) VALUES (?, ?, ?, ?, ?)";
+                PreparedStatement stmt = conn.prepareStatement(insertSql);
                 stmt.setString(1, laboratorioId);
                 stmt.setString(2, pacienteId);
                 stmt.setString(3, tipoExamen);
                 stmt.setString(4, resultado);
-                stmt.setDate(5, java.sql.Date.valueOf(fechaExamen));
+                stmt.setDate(5, Date.valueOf(fechaExamen));
                 stmt.executeUpdate();
+
+                insertados++;
+                System.out.println("✅ INSERTADO - Paciente: " + pacienteId + ", Examen: " + tipoExamen + ", Fecha: " + fechaExamen);
             }
+
+            System.out.println("📄 ARCHIVO '" + fileName + "' PROCESADO: " + insertados + " insertados, " + duplicados + " duplicados.");
         }
     }
 }
